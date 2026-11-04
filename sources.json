@@ -1,0 +1,13 @@
+{
+  "version": "12.17.0",
+  "platforms": {
+    "x86_64-linux": {
+      "tarball": "pnpm-linux-x64.tar.gz",
+      "hash": "sha256-LFiVn9XfXLn05yeEwIpg/8fuVY/tmwSyIlTikRIgOlE="
+    },
+    "aarch64-linux": {
+      "tarball": "pnpm-linux-arm64.tar.gz",
+      "hash": "sha256-zlpblamXSgu9cTpe90QW280OP98R9p6pLFmVucGMy0c="
+    }
+  }
+}

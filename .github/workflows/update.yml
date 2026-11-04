@@ -1,0 +1,112 @@
+name: update & build
+
+# Triggers (there is no cron):
+#   * repository_dispatch: upstream-release — sent by an external relay after
+#     upstream publishes a release. GitHub does not deliver another
+#     repository's release events to this one, so the relay polls and dispatches.
+#   * workflow_dispatch — manual catch-up.
+#   * push / pull_request — verify that the current content builds.
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+  repository_dispatch:
+    types: [ upstream-release ]
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    # Only dispatch/manual runs refresh sources.json and commit it;
+    # push/PR runs just verify that what is committed builds.
+    if: github.event_name == 'repository_dispatch' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - name: Refresh sources.json
+        run: ./bin/update-sources.sh
+
+      - name: Did anything change?
+        id: diff
+        run: |
+          if git diff --quiet -- sources.json; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Both platforms are hashed by the script above; build the one this runner
+      # can actually execute. The arm64 hash is still verified at fetch time by
+      # the evaluation-only job below.
+      - name: Build (x86_64)
+        if: steps.diff.outputs.changed == 'true'
+        run: nix build --no-link -L .#pnpm
+
+      - name: Commit
+        if: steps.diff.outputs.changed == 'true'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add sources.json
+          git commit -m "chore: bump pnpm to $(jq -r '.version' sources.json)"
+          git push
+
+      # Tag and release so consumers can pin a readable version instead of a
+      # commit revision:
+      #   git+https://github.com/yxlimo/pnpm-flake?ref=refs/tags/v12.17.0
+      - name: Tag and release
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version=$(jq -r '.version' sources.json)
+          tag="v${version}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "release $tag already exists, skipping"
+            exit 0
+          fi
+          notes=$(printf 'pnpm %s, from the standalone release tarballs (x86_64-linux / aarch64-linux).\n\nHashes (sources.json):\n\n```\n%s\n```\n' \
+            "$version" \
+            "$(jq -r '.platforms | to_entries[] | "\(.key): \(.value.hash)"' sources.json)")
+          gh release create "$tag" \
+            --title "pnpm $version" \
+            --notes "$notes" \
+            --target "$(git rev-parse HEAD)"
+
+  build:
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        include:
+          # x86_64: a real build (the runner is x86_64).
+          - system: x86_64-linux
+            build: true
+          # aarch64: evaluation only. The runner cannot execute arm binaries
+          # without binfmt emulation, so building here would only produce a
+          # misleading "exec format error". The hash is still checked, because
+          # evaluation resolves the fixed-output derivation.
+          - system: aarch64-linux
+            build: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - name: Evaluate
+        run: nix eval --raw .#packages.${{ matrix.system }}.pnpm.version
+
+      - name: Build
+        if: matrix.build
+        run: nix build --no-link -L .#packages.${{ matrix.system }}.pnpm
