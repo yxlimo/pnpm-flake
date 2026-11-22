@@ -1,13 +1,13 @@
 {
-  "version": "12.22.0",
+  "version": "12.23.0",
   "platforms": {
     "x86_64-linux": {
       "tarball": "pnpm-linux-x64.tar.gz",
-      "hash": "sha256-B+4Zb5GvHiHtsMeUQB9BUpMsdLDbpdQV3E29V4Pzx68="
+      "hash": "sha256-tRXinyrBrcD75jFzQUpmgoJ7r/JPF+etNHaCG97yNqw="
     },
     "aarch64-linux": {
       "tarball": "pnpm-linux-arm64.tar.gz",
-      "hash": "sha256-IrI9qLANEsL9/EG1UztltGfHsXjZP9/pEoxJFYXf8aQ="
+      "hash": "sha256-3QP3YWYl/48T2VL2QfCGSiMA1z0KdRpoJzdhW9n5p6I="
     }
   }
 }
